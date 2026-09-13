@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Police Pursuit: Checkpoint Run</title>
+<style>
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        overflow: hidden;
+        background: #111;
+        font-family: Arial, Helvetica, sans-serif;
+        color: white;
+        user-select: none;
+    }
+
+    #game {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        background: linear-gradient(#5f5f5f, #3c3c3c);
+    }
+
+    canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+
+    #hud {
+        position: absolute;
+        top: 14px;
+        left: 14px;
+        right: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        pointer-events: none;
+        text-shadow: 0 2px 4px #000;
+        z-index: 3;
+    }
+
+    .panel {
+        background: rgba(0,0,0,.48);
+        border: 1px solid rgba(255,255,255,.2);
+        border-radius: 14px;
+        padding: 10px 14px;
+        backdrop-filter: blur(6px);
+    }
+
+    #stats { min-width: 220px; }
+    #stats div { margin: 3px 0; }
+
+    #wanted {
+        text-align: right;
+        min-width: 220px;
+    }
+
+    #wantedBar {
+        width: 200px;
+        height: 12px;
+        margin-top: 5px;
+        border-radius: 99px;
+        background: #272727;
+        overflow: hidden;
+        border: 1px solid rgba(255,255,255,.18);
+    }
+
+    #wantedFill {
+        height: 100%;
+        width: 15%;
+        background: linear-gradient(90deg,#f5c542,#ff4141);
+        transition: width .15s linear;
+    }
+
+    #message {
+        position: absolute;
+        left: 50%;
+        top: 26%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        z-index: 4;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity .25s ease, transform .25s ease;
+    }
+
+    #message.show {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.04);
+    }
+
+    #message h1 {
+        margin: 0;
+        font-size: clamp(34px, 6vw, 74px);
+        letter-spacing: 2px;
+    }
+
+    #message p {
+        margin-top: 10px;
+        font-size: clamp(16px, 2.4vw, 24px);
+        opacity: .9;
+    }
+
+    #startScreen, #gameOverScreen {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: radial-gradient(circle at center, rgba(35,35,35,.78), rgba(0,0,0,.92));
+        text-align: center;
+        padding: 20px;
+    }
+
+    #gameOverScreen { display: none; }
+
+    .modal {
+        max-width: 700px;
+        background: rgba(15,15,15,.86);
+        padding: 30px;
+        border-radius: 22px;
+        border: 1px solid rgba(255,255,255,.14);
+        box-shadow: 0 18px 60px rgba(0,0,0,.55);
+    }
+
+    .modal h1 {
+        margin: 0 0 10px;
+        font-size: clamp(34px, 7vw, 68px);
+    }
+
+    .modal p {
+        line-height: 1.5;
+        color: #ddd;
+    }
+
+    button {
+        margin-top: 14px;
+        border: 0;
+        border-radius: 12px;
+        padding: 13px 22px;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+        background: white;
+        color: #111;
+    }
+
+    button:hover { transform: translateY(-1px); }
+
+    .keys {
+        display: inline-grid;
+        grid-template-columns: repeat(3, 52px);
+        gap: 6px;
+        margin-top: 12px;
+        opacity: .9;
+    }
+    .key {
+        padding: 10px 0;
+        background: #282828;
+        border-radius: 8px;
+        border: 1px solid #4a4a4a;
+    }
+    .empty { visibility: hidden; }
+
+    #touchControls {
+        position: absolute;
+        bottom: 16px;
+        left: 16px;
+        right: 16px;
+        display: none;
+        justify-content: space-between;
+        z-index: 5;
+        pointer-events: none;
+    }
+
+    .touchGroup { display: flex; gap: 10px; pointer-events: auto; }
+    .touchBtn {
+        width: 62px;
+        height: 62px;
+        border-radius: 50%;
+        background: rgba(0,0,0,.48);
+        color: white;
+        border: 1px solid rgba(255,255,255,.2);
+        font-size: 25px;
+        display: grid;
+        place-items: center;
+        padding: 0;
+        margin: 0;
+        touch-action: none;
+    }
+
+    @media (max-width: 800px), (pointer: coarse) {
+        #touchControls { display: flex; }
+        #hud { flex-direction: column; gap: 8px; }
+        #wanted { text-align: left; }
+    }
+</style>
+</head>
+<body>
+<div id="game">
+    <canvas id="canvas"></canvas>
+
+    <div id="hud">
+        <div class="panel" id="stats">
+            <div>Checkpoint: <b id="checkpoint">0</b></div>
+            <div>Distance: <b id="distance">0</b> m</div>
+            <div>Speed: <b id="speed">0</b> km/h</div>
+            <div>Best: <b id="best">0</b> checkpoints</div>
+        </div>
+
+        <div class="panel" id="wanted">
+            <div>POLICE HEAT: <b id="heatText">1</b></div>
+            <div id="wantedBar"><div id="wantedFill"></div></div>
+        </div>
+    </div>
+
+    <div id="message">
+        <h1 id="messageTitle"></h1>
+        <p id="messageText"></p>
+    </div>
+
+    <div id="startScreen">
+        <div class="modal">
+            <h1>🚓 POLICE PURSUIT</h1>
+            <p>Escape the police and reach as many checkpoints as possible. Every checkpoint makes the chase harder: faster police, more traffic, and tighter roads.</p>
+            <p><b>Controls:</b> Arrow keys or WASD to steer. Hold Shift for nitro.</p>
+            <div class="keys">
+                <div class="key empty">·</div><div class="key">W / ↑</div><div class="key empty">·</div>
+                <div class="key">A / ←</div><div class="key">S / ↓</div><div class="key">D / →</div>
+            </div><br>
+            <button id="startBtn">START CHASE</button>
+        </div>
+    </div>
+
+    <div id="gameOverScreen">
+        <div class="modal">
+            <h1>🚨 BUSTED!</h1>
+            <p>You were caught by the police.</p>
+            <p>Checkpoints reached: <b id="finalCheckpoint">0</b></p>
+            <p>Distance survived: <b id="finalDistance">0</b> m</p>
+            <button id="restartBtn">RUN AGAIN</button>
+        </div>
+    </div>
+
+    <div id="touchControls">
+        <div class="touchGroup">
+            <button class="touchBtn" data-key="left">◀</button>
+            <button class="touchBtn" data-key="right">▶</button>
+        </div>
+        <div class="touchGroup">
+            <button class="touchBtn" data-key="brake">▼</button>
+            <button class="touchBtn" data-key="nitro">⚡</button>
+            <button class="touchBtn" data-key="boost">▲</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const checkpointEl = document.getElementById("checkpoint");
+const distanceEl = document.getElementById("distance");
+const speedEl = document.getElementById("speed");
+const bestEl = document.getElementById("best");
+const heatText = document.getElementById("heatText");
+const wantedFill = document.getElementById("wantedFill");
+const message = document.getElementById("message");
+const messageTitle = document.getElementById("messageTitle");
+const messageText = document.getElementById("messageText");
+const startScreen = document.getElementById("startScreen");
+const gameOverScreen = document.getElementById("gameOverScreen");
+const finalCheckpoint = document.getElementById("finalCheckpoint");
+const finalDistance = document.getElementById("finalDistance");
+
+let W = 0, H = 0, dpr = Math.min(devicePixelRatio || 1, 2);
+function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+const keys = {
+    left:false, right:false, boost:false, brake:false, nitro:false
+};
+
+const keyMap = {
+    ArrowLeft:"left", ArrowRight:"right", ArrowUp:"boost", ArrowDown:"brake",
+    a:"left", d:"right", w:"boost", s:"brake",
+    A:"left", D:"right", W:"boost", S:"brake",
+    Shift:"nitro"
+};
+
+window.addEventListener("keydown", e => {
+    if (keyMap[e.key]) {
+        keys[keyMap[e.key]] = true;
+        e.preventDefault();
+    }
+    if (!gameStarted && (e.key === "Enter" || e.key === " ")) startGame();
+    if (gameEnded && e.key === "Enter") startGame();
+});
+window.addEventListener("keyup", e => {
+    if (keyMap[e.key]) keys[keyMap[e.key]] = false;
+});
+
+document.querySelectorAll(".touchBtn").forEach(btn => {
+    const k = btn.dataset.key;
+    const set = v => { keys[k] = v; };
+    btn.addEventListener("pointerdown", e => { e.preventDefault(); set(true); btn.setPointerCapture(e.pointerId); });
+    btn.addEventListener("pointerup", e => { e.preventDefault(); set(false); });
+    btn.addEventListener("pointercancel", () => set(false));
+    btn.addEventListener("pointerleave", () => set(false));
+});
+
+let gameStarted = false;
+let gameEnded = false;
+let best = Number(localStorage.getItem("policePursuitBest") || 0);
+bestEl.textContent = best;
+
+const player = {
+    x: 0,
+    lane: 1,
+    y: 0.82,
+    vx: 0,
+    angle: 0,
+    speed: 0,
+    maxSpeed: 260
+};
+
+let police = [];
+let traffic = [];
+let roadOffset = 0;
+let distance = 0;
+let checkpoint = 0;
+let checkpointDistance = 0;
+let difficulty = 1;
+let heat = 1;
+let roadWidth = 0;
+let roadCenter = 0;
+let roadScroll = 0;
+let last = performance.now();
+let spawnTrafficTimer = 0;
+let spawnPoliceTimer = 0;
+let checkpointFlash = 0;
+let sirenPhase = 0;
+
+const stars = Array.from({length: 90}, () => ({
+    x: Math.random(),
+    y: Math.random() * 0.65,
+    r: Math.random()*1.5 + .3
+}));
+
+function roadMetrics() {
+    roadWidth = Math.min(W * 0.56, 760) * (1 - Math.min(checkpoint * .012, .18));
+    roadCenter = W * 0.5 + Math.sin(roadScroll * 0.0015) * W * 0.12;
+}
+roadMetrics();
+
+function laneX(lane, yFactor = player.y) {
+    const laneW = roadWidth / 4;
+    return roadCenter - roadWidth/2 + laneW * (lane + 0.5);
+}
+
+function resetEntities() {
+    police = [];
+    traffic = [];
+    for (let i=0; i<2; i++) {
+        police.push(makePolice(-80 - i*90, i%2===0 ? 1 : 2));
+    }
+    for (let i=0; i<4; i++) {
+        traffic.push(makeTraffic(450 + i*230, i%4));
+    }
+}
+
+function makePolice(y, lane) {
+    return {
+        x: laneX(lane, .6),
+        y,
+        lane,
+        speed: 145 + difficulty*16 + Math.random()*30,
+        wobble: Math.random()*Math.PI*2,
+        hitCooldown: 0
+    };
+}
+
+function makeTraffic(y, lane) {
+    return {
+        x: laneX(lane, .5),
+        y,
+        lane,
+        speed: 75 + Math.random()*55 + difficulty*7,
+        color: ["#29a3ff","#ff9f1c","#6fff6f","#d66cff","#f2f2f2"][Math.floor(Math.random()*5)],
+        wobble: Math.random()*Math.PI*2
+    };
+}
+
+function showMessage(title, text, ms=1200) {
+    messageTitle.textContent = title;
+    messageText.textContent = text;
+    message.classList.add("show");
+    clearTimeout(showMessage._t);
+    showMessage._t = setTimeout(() => message.classList.remove("show"), ms);
+}
+
+function startGame() {
+    gameStarted = true;
+    gameEnded = false;
+    startScreen.style.display = "none";
+    gameOverScreen.style.display = "none";
+    distance = 0;
+    checkpoint = 0;
+    checkpointDistance = 0;
+    difficulty = 1;
+    heat = 1;
+    roadScroll = 0;
+    roadOffset = 0;
+    player.x = W/2;
+    player.speed = 150;
+    player.vx = 0;
+    player.angle = 0;
+    resetEntities();
+    showMessage("RUN!", "Reach the first checkpoint.", 1000);
+}
+
+function gameOver() {
+    gameEnded = true;
+    gameStarted = false;
+    finalCheckpoint.textContent = checkpoint;
+    finalDistance.textContent = Math.floor(distance);
+    if (checkpoint > best) {
+        best = checkpoint;
+        localStorage.setItem("policePursuitBest", best);
+        bestEl.textContent = best;
+    }
+    gameOverScreen.style.display = "flex";
+}
+
+document.getElementById("startBtn").addEventListener("click", startGame);
+document.getElementById("restartBtn").addEventListener("click", startGame);
+
+function update(dt) {
+    if (!gameStarted) return;
+
+    difficulty = 1 + checkpoint * 0.34 + distance / 6000;
+    roadMetrics();
+
+    const steer = (keys.left ? -1 : 0) + (keys.right ? 1 : 0);
+    const nitro = keys.nitro && player.speed > 70;
+    const targetSpeed = Math.min(
+        player.maxSpeed + checkpoint*17,
+        155 + checkpoint*10 + (keys.boost ? 70 : 0) + (nitro ? 105 : 0)
+    );
+
+    let accel = keys.boost ? 220 : 125;
+    if (keys.brake) accel = -260;
+
+    player.speed += accel * dt;
+    player.speed += (targetSpeed - player.speed) * Math.min(dt * 1.9, 1);
+    if (keys.brake) player.speed -= 170 * dt;
+    player.speed = Math.max(50, Math.min(player.speed, targetSpeed + 15));
+
+    player.vx += steer * (650 + player.speed*0.8) * dt;
+    player.vx *= Math.pow(0.001, dt);
+    player.x += player.vx * dt;
+    player.x = Math.max(roadCenter-roadWidth/2+38, Math.min(roadCenter+roadWidth/2-38, player.x));
+    player.angle += ((steer*0.22) - player.angle) * Math.min(dt*10,1);
+
+    roadScroll += player.speed * dt;
+    roadOffset = (roadOffset + player.speed * dt) % 80;
+
+    distance += player.speed * dt * 0.62;
+    checkpointDistance += player.speed * dt * 0.62;
+
+    const checkpointEvery = Math.max(900, 1350 - checkpoint*35);
+    if (checkpointDistance >= checkpointEvery) {
+        checkpointDistance = 0;
+        checkpoint++;
+        heat = Math.min(100, heat + 11);
+        checkpointFlash = 1;
+        showMessage("CHECKPOINT " + checkpoint, "The police are getting faster!", 1300);
+        for (let i=0; i<Math.min(3, Math.floor(checkpoint/2)); i++) {
+            police.push(makePolice(-120 - i*100, (i+checkpoint)%4));
+        }
+    }
+
+    heat = Math.min(100, heat + dt * (0.9 + difficulty*0.3) + (nitro ? dt*1.5 : 0));
+    checkpointFlash = Math.max(0, checkpointFlash - dt);
+    sirenPhase += dt*8;
+
+    spawnTrafficTimer -= dt;
+    if (spawnTrafficTimer <= 0) {
+        const amount = 1 + Math.floor(Math.random() * Math.min(2, checkpoint/3 + 1));
+        for (let i=0; i<amount; i++) {
+            traffic.push(makeTraffic(-60 - i*90, Math.floor(Math.random()*4)));
+        }
+        spawnTrafficTimer = Math.max(0.45, 1.2 - difficulty*0.055);
+    }
+
+    spawnPoliceTimer -= dt;
+    if (spawnPoliceTimer <= 0) {
+        if (police.length < 2 + Math.floor(checkpoint/2)) {
+            police.push(makePolice(-150, Math.floor(Math.random()*4)));
+        }
+        spawnPoliceTimer = Math.max(.7, 2.4 - difficulty*0.11);
+    }
+
+    for (const t of traffic) {
+        t.y += (player.speed - t.speed) * dt;
+        t.wobble += dt*1.4;
+        t.x += Math.sin(t.wobble)*8*dt;
+    }
+
+    for (const p of police) {
+        p.y += (player.speed - p.speed) * dt;
+        p.wobble += dt*2.5;
+        const targetX = player.x + Math.sin(p.wobble)*Math.min(90, 20+checkpoint*3);
+        p.x += (targetX - p.x) * Math.min(dt*(1.2 + difficulty*.12), .45);
+        p.hitCooldown = Math.max(0, p.hitCooldown-dt);
+    }
+
+    traffic = traffic.filter(t => t.y < H + 120);
+    police = police.filter(p => p.y < H + 160);
+
+    const playerY = H * player.y;
+    for (const t of traffic) {
+        if (Math.abs(t.x-player.x) < 54 && Math.abs(t.y-playerY) < 68) {
+            player.speed *= 0.72;
+            player.vx += (player.x > t.x ? 1 : -1) * 180;
+            t.y += 100;
+        }
+    }
+
+    for (const p of police) {
+        if (Math.abs(p.x-player.x) < 58 && Math.abs(p.y-playerY) < 72 && p.hitCooldown <= 0) {
+            heat += 8;
+            player.speed *= 0.86;
+            player.vx += (player.x > p.x ? 1 : -1) * 260;
+            p.hitCooldown = 1.0;
+        }
+    }
+
+    const rearPolice = police.some(p => p.y > playerY + 45);
+    if (rearPolice && heat > 96 && checkpoint > 1) {
+        gameOver();
+    }
+
+    // Small heat recovery while far ahead of the chase.
+    const closestPolice = Math.max(...police.map(p => p.y), -999);
+    if (closestPolice < playerY - 120) heat = Math.max(0, heat - dt * 1.8);
+
+    checkpointEl.textContent = checkpoint;
+    distanceEl.textContent = Math.floor(distance);
+    speedEl.textContent = Math.floor(player.speed);
+    heatText.textContent = Math.max(1, Math.ceil(heat/20));
+    wantedFill.style.width = Math.min(100, heat) + "%";
+}
+
+function drawRoad() {
+    // Sky
+    const sky = ctx.createLinearGradient(0,0,0,H*.48);
+    sky.addColorStop(0,"#18223f");
+    sky.addColorStop(1,"#5d86a9");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0,0,W,H);
+
+    // Stars / distant glow
+    for (const s of stars) {
+        ctx.globalAlpha = .25 + s.r*.18;
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.arc(s.x*W, s.y*H*.62, s.r, 0, Math.PI*2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Horizon
+    ctx.fillStyle = "#324d2d";
+    ctx.fillRect(0,H*.42,W,H*.58);
+
+    const edge = roadCenter - roadWidth/2;
+    const roadY = H*.36;
+
+    // Road trapezoid
+    ctx.fillStyle = "#303030";
+    ctx.beginPath();
+    ctx.moveTo(roadCenter - roadWidth*.26, roadY);
+    ctx.lineTo(roadCenter + roadWidth*.26, roadY);
+    ctx.lineTo(roadCenter + roadWidth/2, H);
+    ctx.lineTo(roadCenter - roadWidth/2, H);
+    ctx.closePath();
+    ctx.fill();
+
+    // Road edges
+    ctx.strokeStyle = "#e6e6e6";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(roadCenter-roadWidth*.26,roadY);
+    ctx.lineTo(roadCenter-roadWidth/2,H);
+    ctx.moveTo(roadCenter+roadWidth*.26,roadY);
+    ctx.lineTo(roadCenter+roadWidth/2,H);
+    ctx.stroke();
+
+    // Lane lines
+    ctx.strokeStyle = "#d8d8d8";
+    ctx.lineWidth = 4;
+    ctx.setLineDash([34, 36]);
+    ctx.lineDashOffset = -roadOffset;
+    for (let i=1; i<4; i++) {
+        const xTop = roadCenter - roadWidth*.26 + (roadWidth*.52)*(i/4);
+        const xBottom = roadCenter - roadWidth/2 + roadWidth*(i/4);
+        ctx.beginPath();
+        ctx.moveTo(xTop,roadY);
+        ctx.lineTo(xBottom,H);
+        ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Roadside stripes
+    const stripeCount = 16;
+    for(let i=0;i<stripeCount;i++){
+        const y = roadY + ((i*90 + roadOffset)%700) / 700 * (H-roadY);
+        const t = (y-roadY)/(H-roadY);
+        const roadHalf = roadWidth*.26 + (roadWidth/2-roadWidth*.26)*t;
+        ctx.fillStyle = (i%2===0) ? "#ffdc55" : "#f2f2f2";
+        ctx.fillRect(roadCenter-roadHalf-12, y, 12, 28);
+        ctx.fillRect(roadCenter+roadHalf, y, 12, 28);
+    }
+
+    // Trees
+    const treeRows = 12;
+    for (let i=0;i<treeRows;i++) {
+        const y = roadY + ((i*125 + roadOffset*0.65)%650)/650*(H-roadY);
+        const t=(y-roadY)/(H-roadY);
+        const roadHalf = roadWidth*.26 + (roadWidth/2-roadWidth*.26)*t;
+        drawTree(roadCenter-roadHalf-55, y, 1.4-t*.7);
+        drawTree(roadCenter+roadHalf+55, y, 1.4-t*.7);
+    }
+}
+
+function drawTree(x,y,s){
+    s=Math.max(.45,s);
+    ctx.fillStyle="#4d321e";
+    ctx.fillRect(x-7*s,y-35*s,14*s,45*s);
+    ctx.fillStyle="#163e1d";
+    ctx.beginPath(); ctx.arc(x,y-50*s,32*s,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#1c5a25";
+    ctx.beginPath(); ctx.arc(x+18*s,y-35*s,24*s,0,Math.PI*2); ctx.fill();
+}
+
+function drawCar(x,y,color,policeCar=false,playerCar=false,tilt=0){
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.rotate(tilt);
+
+    // Shadow
+    ctx.fillStyle="rgba(0,0,0,.35)";
+    ctx.beginPath();
+    ctx.ellipse(0,24,31,11,0,0,Math.PI*2);
+    ctx.fill();
+
+    // Body
+    ctx.fillStyle=color;
+    roundRect(-23,-42,46,84,9);
+    ctx.fill();
+
+    // Windows
+    ctx.fillStyle="#152436";
+    roundRect(-17,-25,34,27,6);
+    ctx.fill();
+
+    ctx.fillStyle="#1f3749";
+    roundRect(-15,-21,30,10,4);
+    ctx.fill();
+
+    // Wheels
+    ctx.fillStyle="#111";
+    roundRect(-28,-28,8,19,4);
+    roundRect(20,-28,8,19,4);
+    roundRect(-28,10,8,19,4);
+    roundRect(20,10,8,19,4);
+
+    // Lights
+    ctx.fillStyle="#fff2a6";
+    roundRect(-17,-39,9,6,2);
+    roundRect(8,-39,9,6,2);
+    ctx.fillStyle="#ff3838";
+    roundRect(-17,33,9,6,2);
+    roundRect(8,33,9,6,2);
+
+    if(policeCar){
+        const flash = Math.sin(sirenPhase*2) > 0;
+        ctx.fillStyle = flash ? "#2f8cff" : "#ff364f";
+        roundRect(-13,-48,13,6,3);
+        ctx.fillStyle = flash ? "#ff364f" : "#2f8cff";
+        roundRect(0,-48,13,6,3);
+    }
+
+    if(playerCar){
+        ctx.strokeStyle="rgba(255,255,255,.65)";
+        ctx.lineWidth=2;
+        ctx.strokeRect(-22,-41,44,82);
+    }
+
+    ctx.restore();
+}
+
+function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+}
+
+function render(){
+    ctx.clearRect(0,0,W,H);
+    roadMetrics();
+    drawRoad();
+
+    const playerY=H*player.y;
+
+    // Traffic
+    for(const t of traffic){
+        drawCar(t.x,t.y,t.color,false,false,(t.x-laneX(t.lane))*.002);
+    }
+
+    // Police
+    for(const p of police){
+        drawCar(p.x,p.y,"#f4f4f4",true,false,(p.x-laneX(p.lane))*.002);
+    }
+
+    // Player
+    drawCar(player.x,playerY,"#e53935",false,true,player.angle);
+
+    // Nitro trail
+    if(keys.nitro && gameStarted){
+        ctx.fillStyle="rgba(70,170,255,.65)";
+        ctx.beginPath();
+        ctx.moveTo(player.x-10,playerY+38);
+        ctx.lineTo(player.x,playerY+75+Math.random()*18);
+        ctx.lineTo(player.x+10,playerY+38);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Checkpoint flash
+    if(checkpointFlash>0){
+        ctx.fillStyle=`rgba(255,255,255,${checkpointFlash*.18})`;
+        ctx.fillRect(0,0,W,H);
+        ctx.fillStyle="rgba(255,220,90,.12)";
+        ctx.fillRect(0,H*.45,W,Math.sin(checkpointFlash*18)*4+12);
+    }
+}
+
+function loop(now){
+    const dt=Math.min(.033,(now-last)/1000);
+    last=now;
+    update(dt);
+    render();
+    requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
